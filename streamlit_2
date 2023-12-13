@@ -1,0 +1,112 @@
+import pandas as pd
+import streamlit as st
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn import metrics
+import plotly.express as px
+
+# Chargement du jeu de données
+bd = pd.read_csv("/Users/USER/Financial_inclusion_dataset.csv")
+
+# Exploration des données
+st.subheader("Informations sur le jeu de données:")
+st.dataframe(bd.head())
+
+# Les pays concernés par l'étude
+st.subheader("Les pays concernés par l'étude:")
+c = bd["country"].unique()
+st.write(f"Les pays concernés par l'étude sont : {c}")
+
+# La période d'étude
+st.subheader("Les années d'étude:")
+p = bd["year"].unique()
+st.write(f"Les années d'étude sont : {p}")
+
+# Visualisation des données
+count_by_country_sex = bd.groupby(['country', 'gender_of_respondent']).size().reset_index(name='count')
+fig1 = px.bar(count_by_country_sex, x="country", y="count", color="gender_of_respondent",
+              title="Répartition des individus par pays selon le sexe",
+              labels={'count': 'Nombre de représentants'})
+
+count_by_country_sex_status = bd.groupby(['country', 'gender_of_respondent', 'bank_account']).size().reset_index(name='count')
+fig2 = px.bar(count_by_country_sex_status, x="country", y="count", color="gender_of_respondent",
+              facet_col="bank_account",
+              title="Répartition des individus par pays selon le sexe et le statut du compte bancaire",
+              labels={'count': 'Nombre de représentants'})
+
+# Afficher les graphiques Plotly
+st.subheader("Répartition des individus par pays selon le sexe:")
+st.plotly_chart(fig1)
+
+st.subheader("Répartition des individus par pays selon le sexe et le statut du compte bancaire:")
+st.plotly_chart(fig2)
+
+# Prétraitement des données
+bd['country'] = bd['country'].astype(str)
+bd = bd.drop("uniqueid", axis=1)
+bd["bank_account"] = bd["bank_account"].map({"Yes": 1, "No": 0})
+
+# Encodage one-hot pour les caractéristiques catégorielles
+one_hot = pd.get_dummies(bd, columns=["country", "gender_of_respondent", "cellphone_access", "location_type",
+                                      "relationship_with_head", "marital_status", "education_level", "job_type"])
+
+# Supprimer les colonnes catégorielles d'origine du DataFrame
+bd = bd.drop(["country", "gender_of_respondent", "cellphone_access", "location_type", "relationship_with_head",
+              "marital_status", "education_level", "job_type"], axis=1)
+
+# Joindre les colonnes encodées one-hot au DataFrame avec un suffixe
+bd = bd.join(one_hot, rsuffix='_onehot')
+
+# Extraction des caractéristiques
+x = bd.drop('bank_account', axis=1)
+y = bd['bank_account']
+
+# Séparation des données avec une taille de test de 25%
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.25, random_state=0)
+
+# Construction et entraînement du modèle de régression logistique
+logreg = LogisticRegression(max_iter=1000)  # Augmenter le nombre d'itérations
+logreg.fit(x_train, y_train)
+
+# Application Streamlit
+def main():
+    # Titre de l'application
+    st.title('Application d\'Évaluation du Modèle de Régression Logistique')
+
+    # Ajouter des champs de saisie pour les fonctionnalités
+    if 'feature1' in x_test.columns and 'feature2' in x_test.columns:
+        feature1 = st.slider("Caractéristique 1", min_value=x_test['feature1'].min(), max_value=x_test['feature1'].max())
+        feature2 = st.slider("Caractéristique 2", min_value=x_test['feature2'].min(), max_value=x_test['feature2'].max())
+    else:
+        st.write("Veuillez vérifier les noms de colonnes dans votre DataFrame.")
+
+    # Bouton de validation
+    if st.button("Faire une prédiction"):
+        # Faites la prédiction
+        new_data = [[feature1, feature2]]  # Utilisez les noms de fonctionnalités corrects
+        prediction = logreg.predict(new_data)
+
+        # Affichez le résultat de la prédiction
+        st.write("Prédiction :", prediction)
+
+        # Afficher les métriques d'évaluation pour le nouvel ensemble de données
+        new_accuracy = metrics.accuracy_score(y_test, logreg.predict(x_test))
+        new_precision = metrics.precision_score(y_test, logreg.predict(x_test))
+        new_recall = metrics.recall_score(y_test, logreg.predict(x_test))
+
+        st.write(f"Nouvelle Accuracy : {new_accuracy:.2f}")
+        st.write(f"Nouvelle Précision : {new_precision:.2f}")
+        st.write(f"Nouveau Recall : {new_recall:.2f}")
+
+    # Afficher les métriques d'évaluation d'origine
+    st.subheader("Métriques d'évaluation d'origine :")
+    st.write(f"Accuracy : {metrics.accuracy_score(y_test, logreg.predict(x_test)):.2f}")
+    st.write(f"Précision : {metrics.precision_score(y_test, logreg.predict(x_test)):.2f}")
+    st.write(f"Recall : {metrics.recall_score(y_test, logreg.predict(x_test)):.2f}")
+
+    # Afficher la matrice de confusion
+    st.subheader("Matrice de confusion :")
+    st.write(metrics.confusion_matrix(y_test, logreg.predict(x_test)))
+
+if __name__ == "__main__":
+    main()
